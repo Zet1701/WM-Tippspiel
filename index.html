@@ -10,7 +10,9 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0a0a0f; font-family: 'Inter', system-ui, sans-serif; color: #fff; }
-  ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #111; } ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+  input, button, select { font-family: inherit; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -18,111 +20,89 @@
 <script type="text/babel">
 const { useState, useEffect } = React;
 
-const MATCHES = [
-  { id:1,  date:"2026-06-11", time:"21:00", home:"Mexiko",        away:"Südafrika",      group:"A" },
-  { id:2,  date:"2026-06-12", time:"04:00", home:"Südkorea",      away:"Tschechien",     group:"A" },
-  { id:3,  date:"2026-06-12", time:"19:00", home:"Kanada",        away:"Bosnien-H.",     group:"B" },
-  { id:4,  date:"2026-06-12", time:"22:00", home:"USA",           away:"Paraguay",       group:"D" },
-  { id:5,  date:"2026-06-13", time:"00:00", home:"Brasilien",     away:"Marokko",        group:"C" },
-  { id:6,  date:"2026-06-13", time:"19:00", home:"Portugal",      away:"Angola",         group:"G" },
-  { id:7,  date:"2026-06-13", time:"22:00", home:"Niederlande",   away:"Japan",          group:"F" },
-  { id:8,  date:"2026-06-14", time:"02:00", home:"Argentinien",   away:"Albanien",       group:"H" },
-  { id:9,  date:"2026-06-14", time:"19:00", home:"Deutschland",   away:"Curaçao",        group:"E" },
-  { id:10, date:"2026-06-14", time:"22:00", home:"Spanien",       away:"China",          group:"K" },
-  { id:11, date:"2026-06-15", time:"01:00", home:"Frankreich",    away:"Norwegen",       group:"I" },
-  { id:12, date:"2026-06-15", time:"19:00", home:"England",       away:"Senegal",        group:"J" },
-  { id:13, date:"2026-06-15", time:"22:00", home:"Uruguay",       away:"Irak",           group:"L" },
-  { id:14, date:"2026-06-16", time:"01:00", home:"Belgien",       away:"Neuseeland",     group:"G" },
-  { id:15, date:"2026-06-16", time:"19:00", home:"Kolumbien",     away:"DR Kongo",       group:"B" },
-  { id:16, date:"2026-06-16", time:"22:00", home:"Türkei",        away:"Australien",     group:"C" },
-  { id:17, date:"2026-06-17", time:"01:00", home:"Italien",       away:"Ecuador",        group:"D" },
-  { id:18, date:"2026-06-17", time:"19:00", home:"Österreich",    away:"Jordanien",      group:"H" },
-  { id:19, date:"2026-06-18", time:"21:00", home:"Mexiko",        away:"Südkorea",       group:"A" },
-  { id:20, date:"2026-06-20", time:"22:00", home:"Deutschland",   away:"Elfenbeinküste", group:"E" },
-  { id:21, date:"2026-06-25", time:"22:00", home:"Ecuador",       away:"Deutschland",    group:"E" },
-];
+function lGet(k) { try { return JSON.parse(localStorage.getItem(k)||"null"); } catch { return null; } }
+function lSet(k,v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 
-const FLAGS = {
-  "Mexiko":"🇲🇽","Südafrika":"🇿🇦","Südkorea":"🇰🇷","Tschechien":"🇨🇿","Kanada":"🇨🇦",
-  "Bosnien-H.":"🇧🇦","USA":"🇺🇸","Paraguay":"🇵🇾","Brasilien":"🇧🇷","Marokko":"🇲🇦",
-  "Portugal":"🇵🇹","Angola":"🇦🇴","Niederlande":"🇳🇱","Japan":"🇯🇵","Argentinien":"🇦🇷",
-  "Albanien":"🇦🇱","Deutschland":"🇩🇪","Curaçao":"🇨🇼","Spanien":"🇪🇸","China":"🇨🇳",
-  "Frankreich":"🇫🇷","Norwegen":"🇳🇴","England":"🏴󠁧󠁢󠁥󠁮󠁧󠁿","Senegal":"🇸🇳","Uruguay":"🇺🇾",
-  "Irak":"🇮🇶","Belgien":"🇧🇪","Neuseeland":"🇳🇿","Kolumbien":"🇨🇴","DR Kongo":"🇨🇩",
-  "Türkei":"🇹🇷","Australien":"🇦🇺","Italien":"🇮🇹","Ecuador":"🇪🇨","Österreich":"🇦🇹",
-  "Jordanien":"🇯🇴","Elfenbeinküste":"🇨🇮",
-};
-const flag = t => FLAGS[t] || "🏳️";
-
+function getTend(score) {
+  if (!score) return null;
+  const [h,a] = score.split(":").map(Number);
+  if (isNaN(h)||isNaN(a)) return null;
+  return h>a?"H":h<a?"A":"X";
+}
 function calcPoints(tip, result) {
-  if (!result || !tip) return null;
-  const [rh,ra] = result.split(":").map(Number);
-  const [th,ta] = tip.split(":").map(Number);
-  if (isNaN(th)||isNaN(ta)) return null;
-  if (th===rh && ta===ra) return 5;
-  const rT=rh>ra?"H":rh<ra?"A":"X", tT=th>ta?"H":th<ta?"A":"X";
-  if (rT===tT) return 2;
-  return 0;
+  if (!result) return null;
+  const tend = tip?.tend;
+  const exakt = tip?.exakt;
+  const realTend = getTend(result);
+  if (exakt) {
+    const [rh,ra] = result.split(":").map(Number);
+    const [th,ta] = exakt.split(":").map(Number);
+    if (!isNaN(th)&&!isNaN(ta)) {
+      if (th===rh&&ta===ra) return 5;
+      if (getTend(exakt)===realTend) return 2;
+      return 0;
+    }
+  }
+  if (tend) return tend===realTend ? 2 : 0;
+  return null;
 }
 
 function fmtDate(d) {
+  if (!d) return "";
   return new Date(d+"T12:00:00").toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"});
 }
 
-function localGet(key) { try { return JSON.parse(localStorage.getItem(key)||"null"); } catch{return null;} }
-function localSet(key,val) { try { localStorage.setItem(key,JSON.stringify(val)); } catch{} }
-
 function App() {
-  const [view, setView]         = useState("login");
-  const [username, setUsername] = useState("");
+  const [view, setView]           = useState("login");
+  const [username, setUsername]   = useState("");
   const [nameInput, setNameInput] = useState("");
-  const [allTips, setAllTips]   = useState({});
-  const [results, setResults]   = useState({});
+  const [matches, setMatches]     = useState([]);
+  const [allTips, setAllTips]     = useState({});
   const [adminUnlocked, setAdminUnlocked] = useState(false);
-  const [adminPW, setAdminPW]   = useState("");
-  const [saved, setSaved]       = useState(false);
+  const [adminPW, setAdminPW]     = useState("");
+  const [saved, setSaved]         = useState(false);
 
   useEffect(() => {
-    setAllTips(localGet("wm_tips") || {});
-    setResults(localGet("wm_results") || {});
-    const interval = setInterval(() => {
-      setAllTips(localGet("wm_tips") || {});
-      setResults(localGet("wm_results") || {});
-    }, 5000);
-    return () => clearInterval(interval);
+    setMatches(lGet("wm_matches") || []);
+    setAllTips(lGet("wm_tips")    || {});
+    const iv = setInterval(() => {
+      setMatches(lGet("wm_matches") || []);
+      setAllTips(lGet("wm_tips")    || {});
+    }, 4000);
+    return () => clearInterval(iv);
   }, []);
 
-  function writeTip(matchId, value) {
-    const updated = { ...allTips, [username]: { ...(allTips[username]||{}), [matchId]: value } };
-    if (!value) delete updated[username][matchId];
-    setAllTips(updated);
-    localSet("wm_tips", updated);
-    setSaved(true); setTimeout(()=>setSaved(false), 2000);
-  }
+  function saveMatches(m) { setMatches(m); lSet("wm_matches", m); }
+  function saveTips(t)    { setAllTips(t); lSet("wm_tips", t); setSaved(true); setTimeout(()=>setSaved(false),2000); }
 
-  function writeResult(matchId, value) {
-    const updated = { ...results, [matchId]: value||null };
-    if (!value) delete updated[matchId];
-    setResults(updated);
-    localSet("wm_results", updated);
+  function writeTip(matchId, tend, exakt) {
+    const prev = allTips[username]?.[matchId] || {};
+    const val  = { tend: tend!==undefined?tend:prev.tend, exakt: exakt!==undefined?exakt:prev.exakt };
+    if (!val.tend && val.exakt) val.tend = getTend(val.exakt);
+    saveTips({ ...allTips, [username]: { ...(allTips[username]||{}), [matchId]: val }});
+  }
+  function clearTip(matchId) {
+    const updated = { ...allTips };
+    if (updated[username]) delete updated[username][matchId];
+    saveTips(updated);
   }
 
   function getRangliste() {
     return Object.entries(allTips).map(([name, tips]) => {
-      let pts=0, exakt=0, tend=0;
-      MATCHES.forEach(m => {
-        const p = calcPoints(tips[m.id], results[m.id]);
-        if (p===5){pts+=5;exakt++;}
-        else if (p===2){pts+=2;tend++;}
+      let pts=0, exaktC=0, tendC=0;
+      matches.forEach(m => {
+        const p = calcPoints(tips[m.id], m.result);
+        if (p===5){pts+=5;exaktC++;}
+        else if (p===2){pts+=2;tendC++;}
       });
-      return { name, pts, exakt, tend };
+      return { name, pts, exakt: exaktC, tend: tendC };
     }).sort((a,b)=>b.pts-a.pts||b.exakt-a.exakt);
   }
 
-  const today = new Date().toISOString().split("T")[0];
-  const todayM    = MATCHES.filter(m=>m.date===today);
-  const upcomingM = MATCHES.filter(m=>m.date>today);
-  const pastM     = MATCHES.filter(m=>m.date<today||results[m.id]);
+  const today     = new Date().toISOString().split("T")[0];
+  const todayM    = matches.filter(m=>m.date===today && !m.result);
+  const upcomingM = matches.filter(m=>m.date>today);
+  const pastM     = matches.filter(m=>m.date<today || m.result);
   const rang      = getRangliste();
   const koenig    = rang[0];
 
@@ -152,7 +132,6 @@ function App() {
           <span style={S.badge}>👤 {username}</span>
         </div>
       </div>
-
       <div style={S.nav}>
         {[["tippen","📝 Tippen"],["rangliste","🏆 Rangliste"],["admin","⚙️ Admin"]].map(([v,l])=>(
           <button key={v} style={{...S.navBtn,...(view===v?S.navActive:{})}} onClick={()=>setView(v)}>{l}</button>
@@ -160,11 +139,18 @@ function App() {
         <button style={{...S.navBtn,marginLeft:"auto",color:"#6b7280"}} onClick={()=>{setView("login");setUsername("");}}>Abmelden</button>
       </div>
 
-      <div style={{maxWidth:680,margin:"0 auto",padding:"20px 14px 80px"}}>
+      <div style={{maxWidth:700,margin:"0 auto",padding:"20px 14px 80px"}}>
         {view==="tippen" && <>
-          {todayM.length>0 && <Section title="🔥 Heute">{todayM.map(m=><MatchCard key={m.id} m={m} tip={allTips[username]?.[m.id]||""} result={results[m.id]} onTip={v=>writeTip(m.id,v)} allTips={allTips}/>)}</Section>}
-          {upcomingM.length>0 && <Section title="📅 Kommende Spiele">{upcomingM.map(m=><MatchCard key={m.id} m={m} tip={allTips[username]?.[m.id]||""} result={results[m.id]} onTip={v=>writeTip(m.id,v)} allTips={allTips}/>)}</Section>}
-          {pastM.length>0 && <Section title="✅ Gespielte Partien">{pastM.map(m=><MatchCard key={m.id} m={m} tip={allTips[username]?.[m.id]||""} result={results[m.id]} onTip={v=>writeTip(m.id,v)} allTips={allTips} past/>)}</Section>}
+          {matches.length===0 && (
+            <div style={{textAlign:"center",padding:"60px 20px",color:"#6b7280"}}>
+              <div style={{fontSize:48,marginBottom:16}}>⚽</div>
+              <p>Noch keine Spiele eingetragen.</p>
+              <p style={{fontSize:13,marginTop:8}}>Der Admin trägt die Spiele ein!</p>
+            </div>
+          )}
+          {todayM.length>0    && <Section title="🔥 Heute">{todayM.map(m=><MatchCard key={m.id} m={m} tip={allTips[username]?.[m.id]} onTip={(t,e)=>writeTip(m.id,t,e)} onClear={()=>clearTip(m.id)} allTips={allTips}/>)}</Section>}
+          {upcomingM.length>0 && <Section title="📅 Kommende Spiele">{upcomingM.map(m=><MatchCard key={m.id} m={m} tip={allTips[username]?.[m.id]} onTip={(t,e)=>writeTip(m.id,t,e)} onClear={()=>clearTip(m.id)} allTips={allTips}/>)}</Section>}
+          {pastM.length>0     && <Section title="✅ Abgeschlossene Spiele">{pastM.map(m=><MatchCard key={m.id} m={m} tip={allTips[username]?.[m.id]} onTip={(t,e)=>writeTip(m.id,t,e)} onClear={()=>clearTip(m.id)} allTips={allTips} past/>)}</Section>}
         </>}
 
         {view==="rangliste" && <>
@@ -172,36 +158,38 @@ function App() {
             <div style={{background:"linear-gradient(135deg,#1a1200,#2d2000)",border:"2px solid #f5c518",borderRadius:20,padding:28,textAlign:"center",marginBottom:20}}>
               <div style={{fontSize:44}}>👑</div>
               <div style={{fontWeight:800,fontSize:22,color:"#f5c518"}}>{koenig.name}</div>
-              <div style={{color:"#9ca3af",fontSize:13}}>Aktueller Wettkönig</div>
-              <div style={{fontSize:30,fontWeight:800,marginTop:6}}>{koenig.pts} Pkt</div>
+              <div style={{color:"#9ca3af",fontSize:13,marginTop:4}}>Aktueller Wettkönig</div>
+              <div style={{fontSize:32,fontWeight:800,marginTop:8}}>{koenig.pts} Punkte</div>
             </div>
           )}
-          <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:16,overflow:"hidden"}}>
-            <div style={{display:"flex",padding:"10px 16px",background:"#1f2937",color:"#6b7280",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>
-              <span style={{width:36}}>#</span><span style={{flex:1}}>Name</span>
-              <span style={{width:54,textAlign:"center"}}>⭐ Exakt</span>
-              <span style={{width:54,textAlign:"center"}}>✓ Tend.</span>
-              <span style={{width:54,textAlign:"right"}}>Punkte</span>
-            </div>
-            {rang.length===0 && <p style={{color:"#555",padding:24,textAlign:"center"}}>Noch keine Tipps.</p>}
-            {rang.map((r,i)=>(
-              <div key={r.name} style={{display:"flex",padding:"13px 16px",borderTop:"1px solid #1f2937",alignItems:"center",fontSize:14,background:r.name===username?"rgba(245,197,24,.07)":"transparent",borderLeft:r.name===username?"3px solid #f5c518":"3px solid transparent"}}>
-                <span style={{width:36,fontWeight:700,color:i===0?"#f5c518":i===1?"#aaa":i===2?"#cd7f32":"#555"}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1}</span>
-                <span style={{flex:1,fontWeight:r.name===username?700:400}}>{r.name}</span>
-                <span style={{width:54,textAlign:"center",color:"#4ade80"}}>{r.exakt}</span>
-                <span style={{width:54,textAlign:"center",color:"#60a5fa"}}>{r.tend}</span>
-                <span style={{width:54,textAlign:"right",fontWeight:700,color:"#f5c518"}}>{r.pts}</span>
+          {rang.length===0 && <p style={{color:"#6b7280",textAlign:"center",padding:40}}>Noch keine Tipps.</p>}
+          {rang.length>0 && (
+            <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:16,overflow:"hidden"}}>
+              <div style={{display:"flex",padding:"10px 16px",background:"#1f2937",color:"#6b7280",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>
+                <span style={{width:36}}>#</span><span style={{flex:1}}>Name</span>
+                <span style={{width:60,textAlign:"center"}}>⭐ Exakt</span>
+                <span style={{width:65,textAlign:"center"}}>✓ Tend.</span>
+                <span style={{width:60,textAlign:"right"}}>Punkte</span>
               </div>
-            ))}
-          </div>
-          <div style={{display:"flex",gap:20,justifyContent:"center",marginTop:14,color:"#6b7280",fontSize:12,flexWrap:"wrap"}}>
-            <span>⭐ Exaktes Ergebnis = <b style={{color:"#f5c518"}}>5 Punkte</b></span>
+              {rang.map((r,i)=>(
+                <div key={r.name} style={{display:"flex",padding:"13px 16px",borderTop:"1px solid #1f2937",alignItems:"center",fontSize:14,background:r.name===username?"rgba(245,197,24,.07)":"transparent",borderLeft:r.name===username?"3px solid #f5c518":"3px solid transparent"}}>
+                  <span style={{width:36,fontWeight:700,color:i===0?"#f5c518":i===1?"#aaa":i===2?"#cd7f32":"#555"}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1}</span>
+                  <span style={{flex:1,fontWeight:r.name===username?700:400}}>{r.name}</span>
+                  <span style={{width:60,textAlign:"center",color:"#4ade80"}}>{r.exakt}</span>
+                  <span style={{width:65,textAlign:"center",color:"#60a5fa"}}>{r.tend}</span>
+                  <span style={{width:60,textAlign:"right",fontWeight:700,color:"#f5c518"}}>{r.pts}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:14,color:"#6b7280",fontSize:12,flexWrap:"wrap"}}>
+            <span>⭐ Exakt = <b style={{color:"#f5c518"}}>5 Punkte</b></span>
             <span>✓ Tendenz = <b style={{color:"#60a5fa"}}>2 Punkte</b></span>
           </div>
         </>}
 
-        {view==="admin" && <>
-          {!adminUnlocked ? (
+        {view==="admin" && (
+          !adminUnlocked ? (
             <div style={{maxWidth:360,margin:"40px auto",textAlign:"center"}}>
               <h2 style={{marginBottom:20}}>⚙️ Admin-Bereich</h2>
               <input style={S.input} type="password" placeholder="Admin-Passwort..." value={adminPW}
@@ -210,21 +198,149 @@ function App() {
               <button style={S.btnPrimary} onClick={()=>adminPW==="wettkoenig2026"?setAdminUnlocked(true):alert("Falsches Passwort!")}>Einloggen</button>
               <p style={{color:"#555",fontSize:11,marginTop:8}}>Passwort: wettkoenig2026</p>
             </div>
-          ) : (
-            <div>
-              <h2 style={{marginBottom:6}}>Ergebnisse eintragen</h2>
-              <p style={{color:"#6b7280",fontSize:13,marginBottom:16}}>Format: 2:1 — leer lassen = noch offen</p>
-              {MATCHES.map(m=>(
-                <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:"1px solid #1f2937"}}>
-                  <span style={{flex:1,color:"#ccc",fontSize:13}}>{fmtDate(m.date)} {m.time} · {flag(m.home)} {m.home} – {flag(m.away)} {m.away}</span>
-                  <input style={{background:"#1f2937",border:"1px solid #374151",color:"#fff",padding:"6px 10px",borderRadius:8,width:70,fontSize:14,fontWeight:700,textAlign:"center",outline:"none"}}
-                    placeholder="2:1" value={results[m.id]||""} onChange={e=>writeResult(m.id,e.target.value)} />
-                </div>
-              ))}
-            </div>
-          )}
-        </>}
+          ) : <AdminPanel matches={matches} onSave={saveMatches} />
+        )}
       </div>
+    </div>
+  );
+}
+
+function AdminPanel({ matches, onSave }) {
+  const [tab, setTab] = useState("spiele");
+  const [nm, setNm] = useState({ date:"", time:"", home:"", away:"", group:"" });
+  const [msg, setMsg] = useState("");
+
+  function addMatch() {
+    const { date, time, home, away, group } = nm;
+    if (!date||!time||!home||!away||!group) { setMsg("⚠️ Alle Felder ausfüllen!"); return; }
+    const updated = [...matches, { id:Date.now(), date, time, home:home.trim(), away:away.trim(), group:group.trim().toUpperCase(), result:null }]
+      .sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
+    onSave(updated);
+    setNm({ date:"", time:"", home:"", away:"", group:"" });
+    setMsg("✅ Spiel hinzugefügt!"); setTimeout(()=>setMsg(""),2000);
+  }
+
+  function deleteMatch(id) { if(confirm("Löschen?")) onSave(matches.filter(m=>m.id!==id)); }
+  function setResult(id, val) { onSave(matches.map(m=>m.id===id?{...m,result:val||null}:m)); }
+
+  return (
+    <div>
+      <h2 style={{marginBottom:16}}>⚙️ Admin-Panel</h2>
+      <div style={{display:"flex",gap:6,marginBottom:20}}>
+        {[["spiele","📋 Spiele"],["ergebnisse","⚽ Ergebnisse"]].map(([t,l])=>(
+          <button key={t} style={{...S.navBtn,...(tab===t?S.navActive:{})}} onClick={()=>setTab(t)}>{l}</button>
+        ))}
+      </div>
+
+      {tab==="spiele" && <>
+        <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:14,padding:20,marginBottom:20}}>
+          <h3 style={{marginBottom:16,color:"#f5c518"}}>➕ Neues Spiel</h3>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            <div><label style={S.label}>Datum</label><input style={S.input} type="date" value={nm.date} onChange={e=>setNm({...nm,date:e.target.value})} /></div>
+            <div><label style={S.label}>Uhrzeit (MESZ)</label><input style={S.input} type="time" value={nm.time} onChange={e=>setNm({...nm,time:e.target.value})} /></div>
+            <div><label style={S.label}>Heimteam</label><input style={S.input} placeholder="Deutschland" value={nm.home} onChange={e=>setNm({...nm,home:e.target.value})} /></div>
+            <div><label style={S.label}>Auswärtsteam</label><input style={S.input} placeholder="Curaçao" value={nm.away} onChange={e=>setNm({...nm,away:e.target.value})} /></div>
+            <div><label style={S.label}>Gruppe</label><input style={S.input} placeholder="E" value={nm.group} onChange={e=>setNm({...nm,group:e.target.value})} maxLength={2} /></div>
+          </div>
+          {msg && <p style={{color:msg.startsWith("✅")?"#4ade80":"#f87171",fontSize:13,marginBottom:10}}>{msg}</p>}
+          <button style={S.btnPrimary} onClick={addMatch}>Hinzufügen ➕</button>
+        </div>
+        <h3 style={{marginBottom:10,color:"#9ca3af",fontSize:14}}>Alle Spiele ({matches.length})</h3>
+        {matches.length===0 && <p style={{color:"#555",fontSize:13}}>Noch keine Spiele.</p>}
+        {matches.map(m=>(
+          <div key={m.id} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",background:"#111827",border:"1px solid #1f2937",borderRadius:10,marginBottom:6}}>
+            <span style={{background:"#1f2937",color:"#f5c518",padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700}}>Gr.{m.group}</span>
+            <span style={{color:"#6b7280",fontSize:12,whiteSpace:"nowrap"}}>{fmtDate(m.date)} {m.time}</span>
+            <span style={{flex:1,fontSize:13}}>{m.home} – {m.away}</span>
+            {m.result && <span style={{color:"#4ade80",fontWeight:700,fontSize:13}}>{m.result}</span>}
+            <button onClick={()=>deleteMatch(m.id)} style={{background:"none",border:"1px solid #7f1d1d",color:"#f87171",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:12}}>✕</button>
+          </div>
+        ))}
+      </>}
+
+      {tab==="ergebnisse" && <>
+        <p style={{color:"#6b7280",fontSize:13,marginBottom:16}}>Format: <b style={{color:"#fff"}}>2:1</b> — leer = noch offen</p>
+        {matches.length===0 && <p style={{color:"#555",fontSize:13}}>Keine Spiele vorhanden.</p>}
+        {matches.map(m=>(
+          <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:"1px solid #1f2937"}}>
+            <span style={{background:"#1f2937",color:"#f5c518",padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700}}>Gr.{m.group}</span>
+            <span style={{color:"#6b7280",fontSize:12,whiteSpace:"nowrap"}}>{fmtDate(m.date)} {m.time}</span>
+            <span style={{flex:1,color:"#ccc",fontSize:13}}>{m.home} – {m.away}</span>
+            <input style={{background:"#1f2937",border:`1px solid ${m.result?"#4ade80":"#374151"}`,color:"#fff",padding:"6px 10px",borderRadius:8,width:70,fontSize:14,fontWeight:700,textAlign:"center",outline:"none"}}
+              placeholder="2:1" value={m.result||""} onChange={e=>setResult(m.id,e.target.value)} />
+          </div>
+        ))}
+      </>}
+    </div>
+  );
+}
+
+function MatchCard({ m, tip, onTip, onClear, allTips, past }) {
+  const [exaktInput, setExaktInput] = useState(tip?.exakt||"");
+  useEffect(()=>setExaktInput(tip?.exakt||""),[tip]);
+  const currentTend  = tip?.tend  || null;
+  const currentExakt = tip?.exakt || null;
+  const tipCount = Object.values(allTips).filter(t=>t[m.id]?.tend||t[m.id]?.exakt).length;
+  const pts = calcPoints(tip, m.result);
+
+  function commitExakt(v) {
+    const c=v.trim();
+    if(/^\d+:\d+$/.test(c)) onTip(undefined,c);
+    else if(c==="") { onTip(currentTend,""); setExaktInput(""); }
+    else setExaktInput(currentExakt||"");
+  }
+  function handleTend(t) { if(currentTend===t&&!currentExakt){onClear();return;} onTip(t,undefined); }
+
+  return (
+    <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:14,padding:16,marginBottom:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <span style={{background:"#1f2937",color:"#f5c518",padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:700}}>Gr. {m.group}</span>
+          <span style={{color:"#6b7280",fontSize:12}}>{fmtDate(m.date)} · {m.time} Uhr</span>
+        </div>
+        {tipCount>0 && <span style={{color:"#6b7280",fontSize:12}}>👥 {tipCount}</span>}
+      </div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"14px 0"}}>
+        <div style={{flex:1,fontWeight:700,fontSize:14,color:"#e5e7eb"}}>{m.home}</div>
+        <div style={{width:80,textAlign:"center"}}>
+          {m.result ? <span style={{background:"#1f2937",color:"#fff",padding:"6px 14px",borderRadius:8,fontWeight:800,fontSize:18}}>{m.result}</span>
+                    : <span style={{color:"#374151",fontWeight:700}}>VS</span>}
+        </div>
+        <div style={{flex:1,fontWeight:700,fontSize:14,color:"#e5e7eb",textAlign:"right"}}>{m.away}</div>
+      </div>
+
+      {!past && !m.result && (<>
+        <div style={{marginBottom:10}}>
+          <p style={{color:"#6b7280",fontSize:12,marginBottom:6}}>Wer gewinnt? <span style={{color:"#374151"}}>(2 Pkt)</span></p>
+          <div style={{display:"flex",gap:5}}>
+            {[["H",`${m.home.split(" ")[0]} gewinnt`],["X","Unentschieden"],["A",`${m.away.split(" ")[0]} gewinnt`]].map(([t,l])=>(
+              <button key={t} style={{flex:1,background:currentTend===t?"#1e3a5f":"#1f2937",border:`1px solid ${currentTend===t?"#3b82f6":"#374151"}`,color:currentTend===t?"#93c5fd":"#d1d5db",padding:"8px 4px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:currentTend===t?700:400}}
+                onClick={()=>handleTend(t)}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{padding:"10px 12px",background:"#0d1117",borderRadius:10}}>
+          <p style={{color:"#6b7280",fontSize:12,marginBottom:6}}>Exaktes Ergebnis? <span style={{color:"#374151"}}>(+3 Bonus)</span></p>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <input style={{background:"#1f2937",border:`1px solid ${currentExakt?"#4ade80":"#374151"}`,color:"#fff",padding:"7px 10px",borderRadius:8,width:70,fontSize:15,fontWeight:700,textAlign:"center",outline:"none"}}
+              placeholder="2:1" value={exaktInput}
+              onChange={e=>setExaktInput(e.target.value)}
+              onBlur={e=>commitExakt(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&commitExakt(exaktInput)} />
+            {currentExakt && <span style={{color:"#4ade80",fontSize:13}}>✓ {currentExakt}</span>}
+            {currentExakt && <button onClick={()=>{onTip(currentTend,"");setExaktInput("");}} style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:20,padding:"0 4px"}}>×</button>}
+          </div>
+        </div>
+      </>)}
+
+      {m.result && tip && pts!==null && (
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10,padding:"8px 12px",background:"#0d1117",borderRadius:8}}>
+          <span style={{color:"#9ca3af",fontSize:13}}>Tipp: <b style={{color:"#fff"}}>{currentExakt||(currentTend==="H"?m.home:currentTend==="A"?m.away:"Unentschieden")}</b></span>
+          <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,color:"#fff",background:pts===5?"#16a34a":pts>=2?"#1d4ed8":"#7f1d1d"}}>
+            {pts===5?"⭐ +5 Exakt!":pts>=2?"✓ +2 Tendenz":"✗ 0 Punkte"}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -236,81 +352,15 @@ function Section({title,children}) {
   </div>;
 }
 
-function MatchCard({m, tip, result, onTip, allTips, past}) {
-  const [val, setVal] = useState(tip||"");
-  useEffect(()=>setVal(tip||""),[tip]);
-  const pts = calcPoints(tip, result);
-  const tend = tip?(()=>{const [h,a]=tip.split(":").map(Number);return h>a?"H":h<a?"A":"X";})():null;
-  const tipCount = Object.values(allTips).filter(t=>t[m.id]).length;
-
-  function commit(v) {
-    const c=v.trim();
-    if(/^\d+:\d+$/.test(c)||c==="") onTip(c);
-    else setVal(tip||"");
-  }
-
-  return (
-    <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:14,padding:16,marginBottom:10}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <div style={{display:"flex",gap:8}}>
-          <span style={{background:"#1f2937",color:"#f5c518",padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:700}}>Gr. {m.group}</span>
-          <span style={{color:"#6b7280",fontSize:12}}>{fmtDate(m.date)} · {m.time}</span>
-        </div>
-        {tipCount>0 && <span style={{color:"#6b7280",fontSize:12}}>👥 {tipCount}</span>}
-      </div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"12px 0"}}>
-        <div style={{flex:1}}>
-          <div style={{fontSize:28}}>{flag(m.home)}</div>
-          <div style={{fontSize:14,fontWeight:600,color:"#e5e7eb",marginTop:4}}>{m.home}</div>
-        </div>
-        <div style={{width:70,textAlign:"center"}}>
-          {result?<span style={{background:"#1f2937",color:"#fff",padding:"5px 12px",borderRadius:8,fontWeight:800,fontSize:16}}>{result}</span>
-                 :<span style={{color:"#444",fontWeight:700}}>VS</span>}
-        </div>
-        <div style={{flex:1,textAlign:"right"}}>
-          <div style={{fontSize:28}}>{flag(m.away)}</div>
-          <div style={{fontSize:14,fontWeight:600,color:"#e5e7eb",marginTop:4}}>{m.away}</div>
-        </div>
-      </div>
-      {!past&&!result&&(
-        <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
-          {[["H",`${m.home.split(" ")[0]} 🏠`],["X","Unentschieden"],["A",`${m.away.split(" ")[0]} ✈️`]].map(([t,l])=>(
-            <button key={t} style={{flex:1,minWidth:90,background:tend===t?"#1e3a5f":"#1f2937",border:`1px solid ${tend===t?"#3b82f6":"#374151"}`,color:tend===t?"#93c5fd":"#d1d5db",padding:"7px 4px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:500}}
-              onClick={()=>{const v=tend===t?"":t==="H"?"1:0":t==="X"?"1:1":"0:1";setVal(v);onTip(v);}}>
-              {l}
-            </button>
-          ))}
-        </div>
-      )}
-      {!past&&!result&&(
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{color:"#6b7280",fontSize:13}}>Exaktes Ergebnis:</span>
-          <input style={{background:"#1f2937",border:"1px solid #374151",color:"#fff",padding:"6px 10px",borderRadius:8,width:65,fontSize:15,fontWeight:700,textAlign:"center",outline:"none"}}
-            placeholder="2:1" value={val} onChange={e=>setVal(e.target.value)}
-            onBlur={e=>commit(e.target.value)} onKeyDown={e=>e.key==="Enter"&&commit(val)} />
-          {tip&&<span style={{color:"#4ade80",fontSize:13}}>✓ {tip}</span>}
-        </div>
-      )}
-      {result&&tip!==""&&tip!==undefined&&(
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10,padding:"8px 12px",background:"#0d1117",borderRadius:8}}>
-          <span style={{color:"#9ca3af",fontSize:13}}>Dein Tipp: <b style={{color:"#fff"}}>{tip}</b></span>
-          <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,color:"#fff",background:pts===5?"#16a34a":pts===2?"#1d4ed8":"#7f1d1d"}}>
-            {pts===5?"⭐ +5 Exakt!":pts===2?"✓ +2 Tendenz":"✗ 0 Punkte"}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 const S = {
   header:{background:"#111827",borderBottom:"1px solid #1f2937",padding:"13px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:99},
   badge:{background:"#1f2937",padding:"4px 12px",borderRadius:20,fontSize:13,color:"#d1d5db"},
   nav:{display:"flex",gap:4,padding:"8px 14px",background:"#0d1117",borderBottom:"1px solid #1f2937",flexWrap:"wrap"},
   navBtn:{background:"transparent",border:"1px solid #374151",color:"#9ca3af",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:500},
   navActive:{background:"#1f2937",color:"#f5c518",borderColor:"#f5c518"},
-  input:{display:"block",width:"100%",background:"#1f2937",border:"1px solid #374151",color:"#fff",padding:"12px 14px",borderRadius:10,fontSize:15,marginBottom:14,outline:"none"},
-  btnPrimary:{width:"100%",background:"#f5c518",color:"#0a0a0f",border:"none",padding:"13px",borderRadius:10,fontSize:16,fontWeight:800,cursor:"pointer"},
+  input:{display:"block",width:"100%",background:"#1f2937",border:"1px solid #374151",color:"#fff",padding:"10px 12px",borderRadius:8,fontSize:14,marginBottom:4,outline:"none"},
+  label:{display:"block",color:"#9ca3af",fontSize:12,marginBottom:4},
+  btnPrimary:{width:"100%",background:"#f5c518",color:"#0a0a0f",border:"none",padding:"12px",borderRadius:10,fontSize:15,fontWeight:800,cursor:"pointer"},
 };
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
