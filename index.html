@@ -83,6 +83,15 @@ function App() {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
+    // Auto-Login wenn Session gespeichert
+    const saved = localStorage.getItem("wm_session");
+    if (saved) {
+      try {
+        const { name } = JSON.parse(saved);
+        if (name) { setUsername(name); setView("tippen"); }
+      } catch(e) {}
+    }
+
     const mRef = db.ref("matches");
     const tRef = db.ref("tips");
     const uRef = db.ref("users");
@@ -122,6 +131,7 @@ function App() {
       await db.ref(`users/${name}`).set(hashed);
     }
     setUsername(name);
+    localStorage.setItem("wm_session", JSON.stringify({ name }));
     setView("tippen");
     setLoginError("");
   }
@@ -172,13 +182,13 @@ function App() {
         {!connected && <p style={{color:"#f87171",fontSize:12,marginBottom:12}}>⚠️ Verbinde mit Server...</p>}
         <div style={{textAlign:"left",marginBottom:10}}>
           <label style={S.label}>Dein Name</label>
-          <input style={S.input} placeholder="z.B. Daniel" value={nameInput}
+          <input style={S.input} placeholder="" value={nameInput}
             onChange={e=>setNameInput(e.target.value)} />
         </div>
         <div style={{textAlign:"left",marginBottom:6}}>
           <label style={S.label}>Dein PIN (4 Ziffern)</label>
           <input style={S.input} type="password" inputMode="numeric" maxLength={4}
-            placeholder="z.B. 1234" value={pinInput}
+            placeholder="" value={pinInput}
             onChange={e=>setPinInput(e.target.value)}
             onKeyDown={e=>e.key==="Enter"&&handleLogin()} />
         </div>
@@ -208,7 +218,7 @@ function App() {
         {[["tippen","📝 Tippen"],["rangliste","🏆 Rangliste"],["admin","⚙️ Admin"]].map(([v,l])=>(
           <button key={v} style={{...S.navBtn,...(view===v?S.navActive:{})}} onClick={()=>setView(v)}>{l}</button>
         ))}
-        <button style={{...S.navBtn,marginLeft:"auto",color:"#6b7280"}} onClick={()=>{setView("login");setUsername("");setNameInput("");setPinInput("");}}>Abmelden</button>
+        <button style={{...S.navBtn,marginLeft:"auto",color:"#6b7280"}} onClick={()=>{setView("login");setUsername("");setNameInput("");setPinInput("");localStorage.removeItem("wm_session");}}>Abmelden</button>
       </div>
 
       <div style={{maxWidth:700,margin:"0 auto",padding:"20px 14px 80px"}}>
