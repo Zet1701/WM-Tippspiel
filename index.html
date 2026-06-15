@@ -7,6 +7,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0a0a0f; font-family: 'Inter', system-ui, sans-serif; color: #fff; }
@@ -17,11 +19,20 @@
 </head>
 <body>
 <div id="root"></div>
+<script>
+firebase.initializeApp({
+  apiKey: "AIzaSyCV7ySIkMYarUmltjezzOJDvqgpI2ChW_8",
+  authDomain: "wm-tippspiel-c58dd.firebaseapp.com",
+  databaseURL: "https://wm-tippspiel-c58dd-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "wm-tippspiel-c58dd",
+  storageBucket: "wm-tippspiel-c58dd.firebasestorage.app",
+  messagingSenderId: "987152976990",
+  appId: "1:987152976990:web:d1e107ce6a519b355af8cf"
+});
+const db = firebase.database();
+</script>
 <script type="text/babel">
 const { useState, useEffect } = React;
-
-function lGet(k) { try { return JSON.parse(localStorage.getItem(k)||"null"); } catch { return null; } }
-function lSet(k,v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 
 function getTend(score) {
   if (!score) return null;
@@ -29,11 +40,12 @@ function getTend(score) {
   if (isNaN(h)||isNaN(a)) return null;
   return h>a?"H":h<a?"A":"X";
 }
+
 function calcPoints(tip, result) {
   if (!result) return null;
-  const tend = tip?.tend;
-  const exakt = tip?.exakt;
   const realTend = getTend(result);
+  const exakt = tip?.exakt;
+  const tend  = tip?.tend;
   if (exakt) {
     const [rh,ra] = result.split(":").map(Number);
     const [th,ta] = exakt.split(":").map(Number);
@@ -61,30 +73,50 @@ function App() {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [adminPW, setAdminPW]     = useState("");
   const [saved, setSaved]         = useState(false);
+  const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    setMatches(lGet("wm_matches") || []);
-    setAllTips(lGet("wm_tips")    || {});
-    const iv = setInterval(() => {
-      setMatches(lGet("wm_matches") || []);
-      setAllTips(lGet("wm_tips")    || {});
-    }, 4000);
-    return () => clearInterval(iv);
+    // Firebase Listener
+    const mRef = db.ref("matches");
+    const tRef = db.ref("tips");
+    const cRef = db.ref(".info/connected");
+
+    cRef.on("value", snap => setConnected(snap.val()));
+    mRef.on("value", snap => {
+      const val = snap.val();
+      if (val) {
+        const arr = Object.entries(val).map(([k,v])=>({...v,id:k}))
+          .sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
+        setMatches(arr);
+      } else setMatches([]);
+    });
+    tRef.on("value", snap => setAllTips(snap.val() || {}));
+
+    return () => { mRef.off(); tRef.off(); cRef.off(); };
   }, []);
 
-  function saveMatches(m) { setMatches(m); lSet("wm_matches", m); }
-  function saveTips(t)    { setAllTips(t); lSet("wm_tips", t); setSaved(true); setTimeout(()=>setSaved(false),2000); }
-
-  function writeTip(matchId, tend, exakt) {
-    const prev = allTips[username]?.[matchId] || {};
-    const val  = { tend: tend!==undefined?tend:prev.tend, exakt: exakt!==undefined?exakt:prev.exakt };
-    if (!val.tend && val.exakt) val.tend = getTend(val.exakt);
-    saveTips({ ...allTips, [username]: { ...(allTips[username]||{}), [matchId]: val }});
+  async function saveMatch(m) {
+    const { id, ...data } = m;
+    if (id) await db.ref(`matches/${id}`).set(data);
+    else {
+      const ref = db.ref("matches").push();
+      await ref.set(data);
+    }
   }
-  function clearTip(matchId) {
-    const updated = { ...allTips };
-    if (updated[username]) delete updated[username][matchId];
-    saveTips(updated);
+
+  async function deleteMatch(id) { await db.ref(`matches/${id}`).remove(); }
+  async function setResult(id, val) { await db.ref(`matches/${id}/result`).set(val||null); }
+
+  async function writeTip(matchId, tend, exakt) {
+    const prev = allTips[username]?.[matchId] || {};
+    const val  = { tend: tend!==undefined?tend:prev.tend||null, exakt: exakt!==undefined?exakt:prev.exakt||null };
+    if (!val.tend && val.exakt) val.tend = getTend(val.exakt);
+    await db.ref(`tips/${username}/${matchId}`).set(val);
+    setSaved(true); setTimeout(()=>setSaved(false), 2000);
+  }
+
+  async function clearTip(matchId) {
+    await db.ref(`tips/${username}/${matchId}`).remove();
   }
 
   function getRangliste() {
@@ -112,6 +144,7 @@ function App() {
         <div style={{fontSize:64,marginBottom:12}}>🏆</div>
         <h1 style={{fontSize:26,fontWeight:800,marginBottom:8}}>WM 2026 Tippspiel</h1>
         <p style={{color:"#9ca3af",marginBottom:28}}>Wer wird <span style={{color:"#f5c518",fontWeight:700}}>Wettkönig</span>?</p>
+        {!connected && <p style={{color:"#f87171",fontSize:12,marginBottom:12}}>⚠️ Verbinde mit Datenbank...</p>}
         <input style={S.input} placeholder="Dein Name..." value={nameInput}
           onChange={e=>setNameInput(e.target.value)}
           onKeyDown={e=>e.key==="Enter"&&nameInput.trim()&&(setUsername(nameInput.trim()),setView("tippen"))}
@@ -128,10 +161,12 @@ function App() {
       <div style={S.header}>
         <span style={{fontWeight:800,fontSize:18}}>⚽ WM 2026 <span style={{color:"#f5c518"}}>Tippspiel</span></span>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:connected?"#4ade80":"#f87171",display:"inline-block"}}></span>
           {saved && <span style={{background:"#16a34a",padding:"3px 10px",borderRadius:20,fontSize:12}}>✓ Gespeichert</span>}
           <span style={S.badge}>👤 {username}</span>
         </div>
       </div>
+
       <div style={S.nav}>
         {[["tippen","📝 Tippen"],["rangliste","🏆 Rangliste"],["admin","⚙️ Admin"]].map(([v,l])=>(
           <button key={v} style={{...S.navBtn,...(view===v?S.navActive:{})}} onClick={()=>setView(v)}>{l}</button>
@@ -140,6 +175,7 @@ function App() {
       </div>
 
       <div style={{maxWidth:700,margin:"0 auto",padding:"20px 14px 80px"}}>
+
         {view==="tippen" && <>
           {matches.length===0 && (
             <div style={{textAlign:"center",padding:"60px 20px",color:"#6b7280"}}>
@@ -172,7 +208,9 @@ function App() {
                 <span style={{width:60,textAlign:"right"}}>Punkte</span>
               </div>
               {rang.map((r,i)=>(
-                <div key={r.name} style={{display:"flex",padding:"13px 16px",borderTop:"1px solid #1f2937",alignItems:"center",fontSize:14,background:r.name===username?"rgba(245,197,24,.07)":"transparent",borderLeft:r.name===username?"3px solid #f5c518":"3px solid transparent"}}>
+                <div key={r.name} style={{display:"flex",padding:"13px 16px",borderTop:"1px solid #1f2937",alignItems:"center",fontSize:14,
+                  background:r.name===username?"rgba(245,197,24,.07)":"transparent",
+                  borderLeft:r.name===username?"3px solid #f5c518":"3px solid transparent"}}>
                   <span style={{width:36,fontWeight:700,color:i===0?"#f5c518":i===1?"#aaa":i===2?"#cd7f32":"#555"}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1}</span>
                   <span style={{flex:1,fontWeight:r.name===username?700:400}}>{r.name}</span>
                   <span style={{width:60,textAlign:"center",color:"#4ade80"}}>{r.exakt}</span>
@@ -198,30 +236,26 @@ function App() {
               <button style={S.btnPrimary} onClick={()=>adminPW==="wettkoenig2026"?setAdminUnlocked(true):alert("Falsches Passwort!")}>Einloggen</button>
               <p style={{color:"#555",fontSize:11,marginTop:8}}>Passwort: wettkoenig2026</p>
             </div>
-          ) : <AdminPanel matches={matches} onSave={saveMatches} />
+          ) : <AdminPanel matches={matches} onSave={saveMatch} onDelete={deleteMatch} onResult={setResult} />
         )}
+
       </div>
     </div>
   );
 }
 
-function AdminPanel({ matches, onSave }) {
+function AdminPanel({ matches, onSave, onDelete, onResult }) {
   const [tab, setTab] = useState("spiele");
-  const [nm, setNm] = useState({ date:"", time:"", home:"", away:"", group:"" });
+  const [nm, setNm]   = useState({ date:"", time:"", home:"", away:"", group:"" });
   const [msg, setMsg] = useState("");
 
-  function addMatch() {
+  async function addMatch() {
     const { date, time, home, away, group } = nm;
     if (!date||!time||!home||!away||!group) { setMsg("⚠️ Alle Felder ausfüllen!"); return; }
-    const updated = [...matches, { id:Date.now(), date, time, home:home.trim(), away:away.trim(), group:group.trim().toUpperCase(), result:null }]
-      .sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
-    onSave(updated);
+    await onSave({ date, time, home:home.trim(), away:away.trim(), group:group.trim().toUpperCase(), result:null });
     setNm({ date:"", time:"", home:"", away:"", group:"" });
     setMsg("✅ Spiel hinzugefügt!"); setTimeout(()=>setMsg(""),2000);
   }
-
-  function deleteMatch(id) { if(confirm("Löschen?")) onSave(matches.filter(m=>m.id!==id)); }
-  function setResult(id, val) { onSave(matches.map(m=>m.id===id?{...m,result:val||null}:m)); }
 
   return (
     <div>
@@ -253,7 +287,7 @@ function AdminPanel({ matches, onSave }) {
             <span style={{color:"#6b7280",fontSize:12,whiteSpace:"nowrap"}}>{fmtDate(m.date)} {m.time}</span>
             <span style={{flex:1,fontSize:13}}>{m.home} – {m.away}</span>
             {m.result && <span style={{color:"#4ade80",fontWeight:700,fontSize:13}}>{m.result}</span>}
-            <button onClick={()=>deleteMatch(m.id)} style={{background:"none",border:"1px solid #7f1d1d",color:"#f87171",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:12}}>✕</button>
+            <button onClick={()=>confirm("Löschen?")&&onDelete(m.id)} style={{background:"none",border:"1px solid #7f1d1d",color:"#f87171",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:12}}>✕</button>
           </div>
         ))}
       </>}
@@ -267,7 +301,8 @@ function AdminPanel({ matches, onSave }) {
             <span style={{color:"#6b7280",fontSize:12,whiteSpace:"nowrap"}}>{fmtDate(m.date)} {m.time}</span>
             <span style={{flex:1,color:"#ccc",fontSize:13}}>{m.home} – {m.away}</span>
             <input style={{background:"#1f2937",border:`1px solid ${m.result?"#4ade80":"#374151"}`,color:"#fff",padding:"6px 10px",borderRadius:8,width:70,fontSize:14,fontWeight:700,textAlign:"center",outline:"none"}}
-              placeholder="2:1" value={m.result||""} onChange={e=>setResult(m.id,e.target.value)} />
+              placeholder="2:1" value={m.result||""}
+              onChange={e=>onResult(m.id, e.target.value)} />
           </div>
         ))}
       </>}
@@ -278,6 +313,7 @@ function AdminPanel({ matches, onSave }) {
 function MatchCard({ m, tip, onTip, onClear, allTips, past }) {
   const [exaktInput, setExaktInput] = useState(tip?.exakt||"");
   useEffect(()=>setExaktInput(tip?.exakt||""),[tip]);
+
   const currentTend  = tip?.tend  || null;
   const currentExakt = tip?.exakt || null;
   const tipCount = Object.values(allTips).filter(t=>t[m.id]?.tend||t[m.id]?.exakt).length;
@@ -300,13 +336,15 @@ function MatchCard({ m, tip, onTip, onClear, allTips, past }) {
         </div>
         {tipCount>0 && <span style={{color:"#6b7280",fontSize:12}}>👥 {tipCount}</span>}
       </div>
+
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"14px 0"}}>
-        <div style={{flex:1,fontWeight:700,fontSize:14,color:"#e5e7eb"}}>{m.home}</div>
+        <div style={{flex:1,fontWeight:700,fontSize:15,color:"#e5e7eb"}}>{m.home}</div>
         <div style={{width:80,textAlign:"center"}}>
-          {m.result ? <span style={{background:"#1f2937",color:"#fff",padding:"6px 14px",borderRadius:8,fontWeight:800,fontSize:18}}>{m.result}</span>
-                    : <span style={{color:"#374151",fontWeight:700}}>VS</span>}
+          {m.result
+            ? <span style={{background:"#1f2937",color:"#fff",padding:"6px 14px",borderRadius:8,fontWeight:800,fontSize:18}}>{m.result}</span>
+            : <span style={{color:"#374151",fontWeight:700}}>VS</span>}
         </div>
-        <div style={{flex:1,fontWeight:700,fontSize:14,color:"#e5e7eb",textAlign:"right"}}>{m.away}</div>
+        <div style={{flex:1,fontWeight:700,fontSize:15,color:"#e5e7eb",textAlign:"right"}}>{m.away}</div>
       </div>
 
       {!past && !m.result && (<>
