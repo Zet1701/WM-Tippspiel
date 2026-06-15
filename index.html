@@ -282,9 +282,8 @@ function App() {
               <h2 style={{marginBottom:20}}>⚙️ Admin-Bereich</h2>
               <input style={S.input} type="password" placeholder="Admin-Passwort..." value={adminPW}
                 onChange={e=>setAdminPW(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&(adminPW==="wettkoenig2026"?setAdminUnlocked(true):alert("Falsches Passwort!"))} />
-              <button style={S.btnPrimary} onClick={()=>adminPW==="wettkoenig2026"?setAdminUnlocked(true):alert("Falsches Passwort!")}>Einloggen</button>
-              <p style={{color:"#555",fontSize:11,marginTop:8}}>Passwort: wettkoenig2026</p>
+                onKeyDown={e=>e.key==="Enter"&&(simpleHash(adminPW)==="2018166355"?setAdminUnlocked(true):alert("Falsches Passwort!"))} />
+              <button style={S.btnPrimary} onClick={()=>simpleHash(adminPW)==="2018166355"?setAdminUnlocked(true):alert("Falsches Passwort!")}>Einloggen</button>
             </div>
           ) : <AdminPanel matches={matches} allTips={allTips} onSave={saveMatch} onDelete={deleteMatch} onResult={setResult} />
         )}
