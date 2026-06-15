@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -35,8 +36,10 @@ const db = firebase.database();
 const { useState, useEffect } = React;
 
 function getTend(score) {
-  if (!score) return null;
-  const [h,a] = score.split(":").map(Number);
+  if (score===null||score===undefined||score==="") return null;
+  const parts = score.split(":");
+  if (parts.length!==2) return null;
+  const h=parseInt(parts[0],10), a=parseInt(parts[1],10);
   if (isNaN(h)||isNaN(a)) return null;
   return h>a?"H":h<a?"A":"X";
 }
@@ -301,7 +304,7 @@ function AdminPanel({ matches, onSave, onDelete, onResult }) {
             <span style={{color:"#6b7280",fontSize:12,whiteSpace:"nowrap"}}>{fmtDate(m.date)} {m.time}</span>
             <span style={{flex:1,color:"#ccc",fontSize:13}}>{m.home} – {m.away}</span>
             <input style={{background:"#1f2937",border:`1px solid ${m.result?"#4ade80":"#374151"}`,color:"#fff",padding:"6px 10px",borderRadius:8,width:70,fontSize:14,fontWeight:700,textAlign:"center",outline:"none"}}
-              placeholder="2:1" value={m.result||""}
+              placeholder=":" value={m.result||""}
               onChange={e=>onResult(m.id, e.target.value)} />
           </div>
         ))}
@@ -322,7 +325,7 @@ function MatchCard({ m, tip, onTip, onClear, allTips, past }) {
   function commitExakt(v) {
     const c=v.trim();
     if(/^\d+:\d+$/.test(c)) onTip(undefined,c);
-    else if(c==="") { onTip(currentTend,""); setExaktInput(""); }
+    else if(c===""||c===":") { onTip(currentTend,""); setExaktInput(""); }
     else setExaktInput(currentExakt||"");
   }
   function handleTend(t) { if(currentTend===t&&!currentExakt){onClear();return;} onTip(t,undefined); }
@@ -361,7 +364,7 @@ function MatchCard({ m, tip, onTip, onClear, allTips, past }) {
           <p style={{color:"#6b7280",fontSize:12,marginBottom:6}}>Exaktes Ergebnis? <span style={{color:"#374151"}}>(+3 Bonus)</span></p>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <input style={{background:"#1f2937",border:`1px solid ${currentExakt?"#4ade80":"#374151"}`,color:"#fff",padding:"7px 10px",borderRadius:8,width:70,fontSize:15,fontWeight:700,textAlign:"center",outline:"none"}}
-              placeholder="2:1" value={exaktInput}
+              placeholder=":" value={exaktInput}
               onChange={e=>setExaktInput(e.target.value)}
               onBlur={e=>commitExakt(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&commitExakt(exaktInput)} />
