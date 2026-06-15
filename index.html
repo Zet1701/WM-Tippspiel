@@ -111,7 +111,12 @@ function App() {
   }, []);
 
   // Einfaches Hash (kein echter Sicherheitsmechanismus, aber gut genug)
-  function simpleHash(str) {
+  async function sha256(str) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+
+function simpleHash(str) {
     let h = 0;
     for (let i=0;i<str.length;i++) h = (Math.imul(31,h)+str.charCodeAt(i))|0;
     return h.toString();
@@ -282,8 +287,8 @@ function App() {
               <h2 style={{marginBottom:20}}>⚙️ Admin-Bereich</h2>
               <input style={S.input} type="password" placeholder="Admin-Passwort..." value={adminPW}
                 onChange={e=>setAdminPW(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&(simpleHash(adminPW)==="2018166355"?setAdminUnlocked(true):alert("Falsches Passwort!"))} />
-              <button style={S.btnPrimary} onClick={()=>simpleHash(adminPW)==="2018166355"?setAdminUnlocked(true):alert("Falsches Passwort!")}>Einloggen</button>
+                onKeyDown={async e=>{ if(e.key==="Enter"){ const h = await sha256(adminPW); if(h==="5a963eda68616d50b843f3610a45f7be7fee66be9ec6622a404c3229fd3ca893") setAdminUnlocked(true); else alert("Falsches Passwort!"); }}} />
+              <button style={S.btnPrimary} onClick={async()=>{ const h = await sha256(adminPW); if(h==="5a963eda68616d50b843f3610a45f7be7fee66be9ec6622a404c3229fd3ca893") setAdminUnlocked(true); else alert("Falsches Passwort!");}}>Einloggen</button>
             </div>
           ) : <AdminPanel matches={matches} allTips={allTips} onSave={saveMatch} onDelete={deleteMatch} onResult={setResult} />
         )}
