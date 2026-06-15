@@ -13,7 +13,7 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0a0a0f; font-family: 'Inter', system-ui, sans-serif; color: #fff; }
-  input, button, select { font-family: inherit; }
+  input, button { font-family: inherit; }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
 </style>
@@ -67,46 +67,70 @@ function fmtDate(d) {
   return new Date(d+"T12:00:00").toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"});
 }
 
+// ── APP ──────────────────────────────────────────────────────────────────
 function App() {
   const [view, setView]           = useState("login");
   const [username, setUsername]   = useState("");
   const [nameInput, setNameInput] = useState("");
+  const [pinInput, setPinInput]   = useState("");
+  const [loginError, setLoginError] = useState("");
   const [matches, setMatches]     = useState([]);
   const [allTips, setAllTips]     = useState({});
+  const [users, setUsers]         = useState({});  // {name: hashedPin}
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [adminPW, setAdminPW]     = useState("");
   const [saved, setSaved]         = useState(false);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    // Firebase Listener
     const mRef = db.ref("matches");
     const tRef = db.ref("tips");
+    const uRef = db.ref("users");
     const cRef = db.ref(".info/connected");
-
-    cRef.on("value", snap => setConnected(snap.val()));
-    mRef.on("value", snap => {
-      const val = snap.val();
+    cRef.on("value", s => setConnected(s.val()));
+    mRef.on("value", s => {
+      const val = s.val();
       if (val) {
         const arr = Object.entries(val).map(([k,v])=>({...v,id:k}))
           .sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
         setMatches(arr);
       } else setMatches([]);
     });
-    tRef.on("value", snap => setAllTips(snap.val() || {}));
-
-    return () => { mRef.off(); tRef.off(); cRef.off(); };
+    tRef.on("value", s => setAllTips(s.val() || {}));
+    uRef.on("value", s => setUsers(s.val() || {}));
+    return () => { mRef.off(); tRef.off(); uRef.off(); cRef.off(); };
   }, []);
+
+  // Einfaches Hash (kein echter Sicherheitsmechanismus, aber gut genug)
+  function simpleHash(str) {
+    let h = 0;
+    for (let i=0;i<str.length;i++) h = (Math.imul(31,h)+str.charCodeAt(i))|0;
+    return h.toString();
+  }
+
+  async function handleLogin() {
+    const name = nameInput.trim();
+    const pin  = pinInput.trim();
+    if (!name) { setLoginError("Bitte Namen eingeben."); return; }
+    if (!/^\d{4}$/.test(pin)) { setLoginError("PIN muss genau 4 Ziffern haben."); return; }
+    const hashed = simpleHash(name+pin);
+    if (users[name]) {
+      // Bestehender User — PIN prüfen
+      if (users[name] !== hashed) { setLoginError("Falscher PIN! Versuch's nochmal."); return; }
+    } else {
+      // Neuer User — PIN registrieren
+      await db.ref(`users/${name}`).set(hashed);
+    }
+    setUsername(name);
+    setView("tippen");
+    setLoginError("");
+  }
 
   async function saveMatch(m) {
     const { id, ...data } = m;
     if (id) await db.ref(`matches/${id}`).set(data);
-    else {
-      const ref = db.ref("matches").push();
-      await ref.set(data);
-    }
+    else { const r = db.ref("matches").push(); await r.set(data); }
   }
-
   async function deleteMatch(id) { await db.ref(`matches/${id}`).remove(); }
   async function setResult(id, val) { await db.ref(`matches/${id}/result`).set(val||null); }
 
@@ -115,12 +139,9 @@ function App() {
     const val  = { tend: tend!==undefined?tend:prev.tend||null, exakt: exakt!==undefined?exakt:prev.exakt||null };
     if (!val.tend && val.exakt) val.tend = getTend(val.exakt);
     await db.ref(`tips/${username}/${matchId}`).set(val);
-    setSaved(true); setTimeout(()=>setSaved(false), 2000);
+    setSaved(true); setTimeout(()=>setSaved(false),2000);
   }
-
-  async function clearTip(matchId) {
-    await db.ref(`tips/${username}/${matchId}`).remove();
-  }
+  async function clearTip(matchId) { await db.ref(`tips/${username}/${matchId}`).remove(); }
 
   function getRangliste() {
     return Object.entries(allTips).map(([name, tips]) => {
@@ -141,19 +162,32 @@ function App() {
   const rang      = getRangliste();
   const koenig    = rang[0];
 
+  // ── LOGIN ──
   if (view==="login") return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"linear-gradient(135deg,#0a0a0f,#0f1a2e)"}}>
-      <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:20,padding:"48px 36px",textAlign:"center",maxWidth:360,width:"90%"}}>
+      <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:20,padding:"48px 36px",textAlign:"center",maxWidth:380,width:"90%"}}>
         <div style={{fontSize:64,marginBottom:12}}>🏆</div>
         <h1 style={{fontSize:26,fontWeight:800,marginBottom:8}}>WM 2026 Tippspiel</h1>
         <p style={{color:"#9ca3af",marginBottom:28}}>Wer wird <span style={{color:"#f5c518",fontWeight:700}}>Wettkönig</span>?</p>
-        {!connected && <p style={{color:"#f87171",fontSize:12,marginBottom:12}}>⚠️ Verbinde mit Datenbank...</p>}
-        <input style={S.input} placeholder="Dein Name..." value={nameInput}
-          onChange={e=>setNameInput(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&nameInput.trim()&&(setUsername(nameInput.trim()),setView("tippen"))}
-          autoFocus />
-        <button style={S.btnPrimary} onClick={()=>{if(nameInput.trim()){setUsername(nameInput.trim());setView("tippen");}}}>
-          Tippen starten ⚽
+        {!connected && <p style={{color:"#f87171",fontSize:12,marginBottom:12}}>⚠️ Verbinde mit Server...</p>}
+        <div style={{textAlign:"left",marginBottom:10}}>
+          <label style={S.label}>Dein Name</label>
+          <input style={S.input} placeholder="z.B. Daniel" value={nameInput}
+            onChange={e=>setNameInput(e.target.value)} />
+        </div>
+        <div style={{textAlign:"left",marginBottom:6}}>
+          <label style={S.label}>Dein PIN (4 Ziffern)</label>
+          <input style={S.input} type="password" inputMode="numeric" maxLength={4}
+            placeholder="z.B. 1234" value={pinInput}
+            onChange={e=>setPinInput(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&handleLogin()} />
+        </div>
+        <p style={{color:"#6b7280",fontSize:11,marginBottom:16,textAlign:"left"}}>
+          Neu hier? PIN selbst ausdenken — wird beim ersten Login gesetzt. Beim nächsten Mal einfach wieder eingeben.
+        </p>
+        {loginError && <p style={{color:"#f87171",fontSize:13,marginBottom:12}}>{loginError}</p>}
+        <button style={S.btnPrimary} onClick={handleLogin}>
+          Los geht's ⚽
         </button>
       </div>
     </div>
@@ -174,11 +208,12 @@ function App() {
         {[["tippen","📝 Tippen"],["rangliste","🏆 Rangliste"],["admin","⚙️ Admin"]].map(([v,l])=>(
           <button key={v} style={{...S.navBtn,...(view===v?S.navActive:{})}} onClick={()=>setView(v)}>{l}</button>
         ))}
-        <button style={{...S.navBtn,marginLeft:"auto",color:"#6b7280"}} onClick={()=>{setView("login");setUsername("");}}>Abmelden</button>
+        <button style={{...S.navBtn,marginLeft:"auto",color:"#6b7280"}} onClick={()=>{setView("login");setUsername("");setNameInput("");setPinInput("");}}>Abmelden</button>
       </div>
 
       <div style={{maxWidth:700,margin:"0 auto",padding:"20px 14px 80px"}}>
 
+        {/* ── TIPPEN ── */}
         {view==="tippen" && <>
           {matches.length===0 && (
             <div style={{textAlign:"center",padding:"60px 20px",color:"#6b7280"}}>
@@ -187,11 +222,12 @@ function App() {
               <p style={{fontSize:13,marginTop:8}}>Der Admin trägt die Spiele ein!</p>
             </div>
           )}
-          {todayM.length>0    && <Section title="🔥 Heute">{todayM.map(m=><MatchCard key={m.id} m={m} tip={allTips[username]?.[m.id]} onTip={(t,e)=>writeTip(m.id,t,e)} onClear={()=>clearTip(m.id)} allTips={allTips}/>)}</Section>}
-          {upcomingM.length>0 && <Section title="📅 Kommende Spiele">{upcomingM.map(m=><MatchCard key={m.id} m={m} tip={allTips[username]?.[m.id]} onTip={(t,e)=>writeTip(m.id,t,e)} onClear={()=>clearTip(m.id)} allTips={allTips}/>)}</Section>}
-          {pastM.length>0     && <Section title="✅ Abgeschlossene Spiele">{pastM.map(m=><MatchCard key={m.id} m={m} tip={allTips[username]?.[m.id]} onTip={(t,e)=>writeTip(m.id,t,e)} onClear={()=>clearTip(m.id)} allTips={allTips} past/>)}</Section>}
+          {todayM.length>0    && <Section title="🔥 Heute">{todayM.map(m=><MatchCard key={m.id} m={m} tip={allTips[username]?.[m.id]} onTip={(t,e)=>writeTip(m.id,t,e)} onClear={()=>clearTip(m.id)} allTips={allTips} username={username}/>)}</Section>}
+          {upcomingM.length>0 && <Section title="📅 Kommende Spiele">{upcomingM.map(m=><MatchCard key={m.id} m={m} tip={allTips[username]?.[m.id]} onTip={(t,e)=>writeTip(m.id,t,e)} onClear={()=>clearTip(m.id)} allTips={allTips} username={username}/>)}</Section>}
+          {pastM.length>0     && <Section title="✅ Abgeschlossene Spiele">{pastM.map(m=><MatchCard key={m.id} m={m} tip={allTips[username]?.[m.id]} onTip={(t,e)=>writeTip(m.id,t,e)} onClear={()=>clearTip(m.id)} allTips={allTips} username={username} past/>)}</Section>}
         </>}
 
+        {/* ── RANGLISTE ── */}
         {view==="rangliste" && <>
           {koenig && (
             <div style={{background:"linear-gradient(135deg,#1a1200,#2d2000)",border:"2px solid #f5c518",borderRadius:20,padding:28,textAlign:"center",marginBottom:20}}>
@@ -229,6 +265,7 @@ function App() {
           </div>
         </>}
 
+        {/* ── ADMIN ── */}
         {view==="admin" && (
           !adminUnlocked ? (
             <div style={{maxWidth:360,margin:"40px auto",textAlign:"center"}}>
@@ -239,7 +276,7 @@ function App() {
               <button style={S.btnPrimary} onClick={()=>adminPW==="wettkoenig2026"?setAdminUnlocked(true):alert("Falsches Passwort!")}>Einloggen</button>
               <p style={{color:"#555",fontSize:11,marginTop:8}}>Passwort: wettkoenig2026</p>
             </div>
-          ) : <AdminPanel matches={matches} onSave={saveMatch} onDelete={deleteMatch} onResult={setResult} />
+          ) : <AdminPanel matches={matches} allTips={allTips} onSave={saveMatch} onDelete={deleteMatch} onResult={setResult} />
         )}
 
       </div>
@@ -247,7 +284,8 @@ function App() {
   );
 }
 
-function AdminPanel({ matches, onSave, onDelete, onResult }) {
+// ── ADMIN PANEL ───────────────────────────────────────────────────────────
+function AdminPanel({ matches, allTips, onSave, onDelete, onResult }) {
   const [tab, setTab] = useState("spiele");
   const [nm, setNm]   = useState({ date:"", time:"", home:"", away:"", group:"" });
   const [msg, setMsg] = useState("");
@@ -264,7 +302,7 @@ function AdminPanel({ matches, onSave, onDelete, onResult }) {
     <div>
       <h2 style={{marginBottom:16}}>⚙️ Admin-Panel</h2>
       <div style={{display:"flex",gap:6,marginBottom:20}}>
-        {[["spiele","📋 Spiele"],["ergebnisse","⚽ Ergebnisse"]].map(([t,l])=>(
+        {[["spiele","📋 Spiele"],["ergebnisse","⚽ Ergebnisse"],["tipps","👀 Alle Tipps"]].map(([t,l])=>(
           <button key={t} style={{...S.navBtn,...(tab===t?S.navActive:{})}} onClick={()=>setTab(t)}>{l}</button>
         ))}
       </div>
@@ -296,7 +334,7 @@ function AdminPanel({ matches, onSave, onDelete, onResult }) {
       </>}
 
       {tab==="ergebnisse" && <>
-        <p style={{color:"#6b7280",fontSize:13,marginBottom:16}}>Format: <b style={{color:"#fff"}}>2:1</b> — leer = noch offen</p>
+        <p style={{color:"#6b7280",fontSize:13,marginBottom:16}}>Ergebnis nach Abpfiff eintragen — leer = noch offen</p>
         {matches.length===0 && <p style={{color:"#555",fontSize:13}}>Keine Spiele vorhanden.</p>}
         {matches.map(m=>(
           <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:"1px solid #1f2937"}}>
@@ -304,23 +342,49 @@ function AdminPanel({ matches, onSave, onDelete, onResult }) {
             <span style={{color:"#6b7280",fontSize:12,whiteSpace:"nowrap"}}>{fmtDate(m.date)} {m.time}</span>
             <span style={{flex:1,color:"#ccc",fontSize:13}}>{m.home} – {m.away}</span>
             <input style={{background:"#1f2937",border:`1px solid ${m.result?"#4ade80":"#374151"}`,color:"#fff",padding:"6px 10px",borderRadius:8,width:70,fontSize:14,fontWeight:700,textAlign:"center",outline:"none"}}
-              placeholder=":" value={m.result||""}
-              onChange={e=>onResult(m.id, e.target.value)} />
+              placeholder=":" value={m.result||""} onChange={e=>onResult(m.id, e.target.value)} />
           </div>
         ))}
+      </>}
+
+      {tab==="tipps" && <>
+        <p style={{color:"#6b7280",fontSize:13,marginBottom:16}}>Alle abgegebenen Tipps aller Spieler.</p>
+        {matches.map(m=>{
+          const tippers = Object.entries(allTips).filter(([,t])=>t[m.id]?.tend||t[m.id]?.exakt);
+          if(tippers.length===0) return null;
+          return (
+            <div key={m.id} style={{background:"#111827",border:"1px solid #1f2937",borderRadius:12,padding:14,marginBottom:10}}>
+              <div style={{fontWeight:700,marginBottom:8,fontSize:14}}>{m.home} – {m.away} <span style={{color:"#6b7280",fontWeight:400,fontSize:12}}>{fmtDate(m.date)}</span></div>
+              {tippers.map(([name,tips])=>{
+                const t = tips[m.id];
+                const tendLabel = t.tend==="H"?m.home:t.tend==="A"?m.away:"Unentschieden";
+                return (
+                  <div key={name} style={{display:"flex",gap:8,padding:"5px 0",borderTop:"1px solid #1f2937",fontSize:13}}>
+                    <span style={{color:"#f5c518",fontWeight:600,minWidth:100}}>{name}</span>
+                    <span style={{color:"#9ca3af"}}>{tendLabel}{t.exakt?` (${t.exakt})`:""}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </>}
     </div>
   );
 }
 
-function MatchCard({ m, tip, onTip, onClear, allTips, past }) {
+// ── MATCH CARD ────────────────────────────────────────────────────────────
+function MatchCard({ m, tip, onTip, onClear, allTips, username, past }) {
   const [exaktInput, setExaktInput] = useState(tip?.exakt||"");
+  const [showTipps, setShowTipps]   = useState(false);
   useEffect(()=>setExaktInput(tip?.exakt||""),[tip]);
 
   const currentTend  = tip?.tend  || null;
   const currentExakt = tip?.exakt || null;
-  const tipCount = Object.values(allTips).filter(t=>t[m.id]?.tend||t[m.id]?.exakt).length;
   const pts = calcPoints(tip, m.result);
+
+  // Alle Tipps für dieses Spiel
+  const tippers = Object.entries(allTips).filter(([,t])=>t[m.id]?.tend||t[m.id]?.exakt);
 
   function commitExakt(v) {
     const c=v.trim();
@@ -332,14 +396,20 @@ function MatchCard({ m, tip, onTip, onClear, allTips, past }) {
 
   return (
     <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:14,padding:16,marginBottom:10}}>
+      {/* Top */}
       <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <span style={{background:"#1f2937",color:"#f5c518",padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:700}}>Gr. {m.group}</span>
           <span style={{color:"#6b7280",fontSize:12}}>{fmtDate(m.date)} · {m.time} Uhr</span>
         </div>
-        {tipCount>0 && <span style={{color:"#6b7280",fontSize:12}}>👥 {tipCount}</span>}
+        {tippers.length>0 && (
+          <button onClick={()=>setShowTipps(!showTipps)} style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",gap:4}}>
+            👥 {tippers.length} {showTipps?"▲":"▼"}
+          </button>
+        )}
       </div>
 
+      {/* Teams */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"14px 0"}}>
         <div style={{flex:1,fontWeight:700,fontSize:15,color:"#e5e7eb"}}>{m.home}</div>
         <div style={{width:80,textAlign:"center"}}>
@@ -350,6 +420,30 @@ function MatchCard({ m, tip, onTip, onClear, allTips, past }) {
         <div style={{flex:1,fontWeight:700,fontSize:15,color:"#e5e7eb",textAlign:"right"}}>{m.away}</div>
       </div>
 
+      {/* Aufklappbare Tipp-Übersicht */}
+      {showTipps && tippers.length>0 && (
+        <div style={{background:"#0d1117",borderRadius:10,padding:"10px 12px",marginBottom:12}}>
+          <p style={{color:"#6b7280",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Tipps der Community</p>
+          {tippers.map(([name,tips])=>{
+            const t = tips[m.id];
+            const tendLabel = t.tend==="H"?m.home:t.tend==="A"?m.away:"Unentschieden";
+            const isMe = name===username;
+            return (
+              <div key={name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderTop:"1px solid #1f2937",fontSize:13}}>
+                <span style={{color:isMe?"#f5c518":"#d1d5db",fontWeight:isMe?700:400}}>
+                  {isMe?"👤 ":"  "}{name}
+                </span>
+                <span style={{color:"#9ca3af"}}>
+                  {tendLabel}
+                  {t.exakt && <span style={{color:"#4ade80",marginLeft:6}}>({t.exakt})</span>}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Tipp Bereich */}
       {!past && !m.result && (<>
         <div style={{marginBottom:10}}>
           <p style={{color:"#6b7280",fontSize:12,marginBottom:6}}>Wer gewinnt? <span style={{color:"#374151"}}>(2 Pkt)</span></p>
@@ -374,6 +468,7 @@ function MatchCard({ m, tip, onTip, onClear, allTips, past }) {
         </div>
       </>)}
 
+      {/* Auswertung */}
       {m.result && tip && pts!==null && (
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10,padding:"8px 12px",background:"#0d1117",borderRadius:8}}>
           <span style={{color:"#9ca3af",fontSize:13}}>Tipp: <b style={{color:"#fff"}}>{currentExakt||(currentTend==="H"?m.home:currentTend==="A"?m.away:"Unentschieden")}</b></span>
